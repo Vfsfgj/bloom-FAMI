@@ -1,0 +1,6 @@
+{
+  "name": "Bloom FAMI Reports",
+  "description": "Un outil innovant et bloomique pour générer automatiquement les rapports hebdomadaires des groupes FAMI.",
+  "requestFramePermissions": ["camera", "microphone"],
+  "majorCapabilities": []
+}

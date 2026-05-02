@@ -1,0 +1,152 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 0. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // 1. Primitive Helpers
+    function isSignedIn() { 
+      return request.auth != null && request.auth.token.email_verified == true; 
+    }
+    
+    function isValidId(id) { 
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); 
+    }
+    
+    function incoming() { 
+      return request.resource.data; 
+    }
+    
+    function existing() { 
+      return resource.data; 
+    }
+
+    // Role lookups
+    function isLeader() {
+      // Must be signed in, and have role 'leader' in users doc
+      return isSignedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'leader';
+    }
+
+    function isMember() {
+      return isSignedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'member';
+    }
+
+    // Entity Validations
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'email', 'name', 'role', 'createdAt'])
+        && data.uid is string && data.uid.size() > 0 && data.uid.size() <= 128 && data.uid == request.auth.uid
+        && data.email is string && data.email.size() > 0 && data.email.size() <= 200
+        && data.name is string && data.name.size() > 0 && data.name.size() <= 100
+        && data.role in ['leader', 'member']
+        && (data.famiId == null || (data.famiId is string && data.famiId.size() > 0 && data.famiId.size() <= 128))
+        && data.createdAt == request.time;
+    }
+
+    function isValidUserUpdate(data) {
+      return data.keys().hasAll(['uid', 'email', 'name', 'role', 'createdAt'])
+        && data.uid == existing().uid
+        && data.email == existing().email
+        && data.name is string && data.name.size() > 0 && data.name.size() <= 100
+        && data.role == existing().role
+        && (data.famiId == null || (data.famiId is string && data.famiId.size() > 0 && data.famiId.size() <= 128))
+        && data.createdAt == existing().createdAt;
+    }
+
+    function isValidFami(data) {
+      return data.keys().hasAll(['name', 'leaderId', 'createdAt']) && data.keys().size() == 3
+        && data.name is string && data.name.size() > 0 && data.name.size() <= 100
+        && data.leaderId is string && data.leaderId == request.auth.uid
+        && data.createdAt == request.time;
+    }
+
+    function isValidFamiUpdate(data) {
+      return data.keys().hasAll(['name', 'leaderId', 'createdAt']) && data.keys().size() == 3
+        && data.name is string && data.name.size() > 0 && data.name.size() <= 100
+        && data.leaderId == existing().leaderId
+        && data.createdAt == existing().createdAt;
+    }
+
+    function isValidActivity(data) {
+      return data.keys().hasAll(['title', 'content', 'questions', 'date', 'createdAt']) && data.keys().size() == 5
+        && data.title is string && data.title.size() > 0 && data.title.size() <= 200
+        && data.content is string && data.content.size() <= 5000
+        && data.questions is list && data.questions.size() <= 20 && (data.questions.size() == 0 || data.questions[0] is string)
+        && data.date is string && data.date.size() <= 50
+        && data.createdAt == request.time;
+    }
+
+    function isValidActivityUpdate(data) {
+      return data.keys().hasAll(['title', 'content', 'questions', 'date', 'createdAt']) && data.keys().size() == 5
+        && data.title is string && data.title.size() > 0 && data.title.size() <= 200
+        && data.content is string && data.content.size() <= 5000
+        && data.questions is list && data.questions.size() <= 20 && (data.questions.size() == 0 || data.questions[0] is string)
+        && data.date is string && data.date.size() <= 50
+        && data.createdAt == existing().createdAt;
+    }
+
+    function isValidResponse(data) {
+      return data.keys().hasAll(['userId', 'vibe', 'answers', 'submittedAt']) && data.keys().size() == 4
+        && data.userId is string && data.userId == request.auth.uid
+        && data.vibe is string && data.vibe.size() > 0 && data.vibe.size() <= 100
+        && data.answers is map
+        && data.submittedAt == request.time;
+    }
+
+    function isValidResponseUpdate(data) {
+      return data.keys().hasAll(['userId', 'vibe', 'answers', 'submittedAt']) && data.keys().size() == 4
+        && data.userId == existing().userId
+        && data.vibe is string && data.vibe.size() > 0 && data.vibe.size() <= 100
+        && data.answers is map
+        && data.submittedAt == existing().submittedAt;
+    }
+
+    match /users/{userId} {
+      allow get: if isSignedIn();
+      allow list: if isSignedIn(); // Allow listing users to select leaders/members if needed, but safer
+      
+      allow create: if isSignedIn() && isValidId(userId) && userId == request.auth.uid && isValidUser(incoming());
+      allow update: if isSignedIn() && isValidId(userId) && userId == request.auth.uid && isValidUserUpdate(incoming())
+        && incoming().diff(existing()).affectedKeys().hasOnly(['name', 'famiId']);
+    }
+
+    match /famis/{famiId} {
+      // Any signed in user can read famis (to pick one)
+      allow read: if isSignedIn() && isValidId(famiId);
+      allow list: if isSignedIn();
+
+      allow create: if isLeader() && isValidId(famiId) && isValidFami(incoming());
+      
+      allow update: if isLeader() && isValidId(famiId) && existing().leaderId == request.auth.uid && isValidFamiUpdate(incoming()) && incoming().diff(existing()).affectedKeys().hasOnly(['name']);
+      
+      allow delete: if isLeader() && isValidId(famiId) && existing().leaderId == request.auth.uid;
+
+      match /activities/{activityId} {
+        allow read: if isSignedIn() && isValidId(famiId) && isValidId(activityId);
+        allow list: if isSignedIn() && isValidId(famiId);
+
+        allow create: if isLeader() && isValidId(famiId) && isValidId(activityId) && get(/databases/$(database)/documents/famis/$(famiId)).data.leaderId == request.auth.uid && isValidActivity(incoming());
+        allow update: if isLeader() && isValidId(famiId) && isValidId(activityId) && get(/databases/$(database)/documents/famis/$(famiId)).data.leaderId == request.auth.uid && isValidActivityUpdate(incoming()) && incoming().diff(existing()).affectedKeys().hasOnly(['title', 'content', 'questions', 'date']);
+        allow delete: if isLeader() && isValidId(famiId) && isValidId(activityId) && get(/databases/$(database)/documents/famis/$(famiId)).data.leaderId == request.auth.uid;
+
+        match /responses/{responseId} {
+          // Leader of fami can read all responses, owner can read their own
+          allow get: if isSignedIn() && isValidId(famiId) && isValidId(activityId) && isValidId(responseId) && 
+            (get(/databases/$(database)/documents/famis/$(famiId)).data.leaderId == request.auth.uid || existing().userId == request.auth.uid);
+            
+          allow list: if isSignedIn() && isValidId(famiId) && isValidId(activityId) && 
+            get(/databases/$(database)/documents/famis/$(famiId)).data.leaderId == request.auth.uid;
+
+          // Members can create a response
+          allow create: if isMember() && isValidId(famiId) && isValidId(activityId) && isValidId(responseId) && responseId == request.auth.uid && isValidResponse(incoming());
+          
+          allow update: if isMember() && isValidId(famiId) && isValidId(activityId) && isValidId(responseId) && responseId == request.auth.uid && isValidResponseUpdate(incoming()) && incoming().diff(existing()).affectedKeys().hasOnly(['vibe', 'answers']);
+        }
+      }
+    }
+  }
+}

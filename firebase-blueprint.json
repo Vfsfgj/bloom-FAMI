@@ -1,0 +1,92 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile with role and associated FAMI.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "name": { "type": "string" },
+        "role": { "type": "string", "enum": ["leader", "member"] },
+        "famiId": { "type": "string", "description": "ID of the FAMI if joined." },
+        "birthDate": { "type": "string", "format": "date" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["uid", "email", "name", "role", "createdAt"]
+    },
+    "Fami": {
+      "title": "Fami",
+      "description": "A FAMI group created by a leader.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "leaderId": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["name", "leaderId", "createdAt"]
+    },
+    "Activity": {
+      "title": "Activity",
+      "description": "Weekly activity created by a leader for their FAMI.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "content": { "type": "string" },
+        "questions": { 
+          "type": "array",
+          "description": "List of question objects: { id, type: 'text'|'qcm', text, options?: string[] }"
+        },
+        "date": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["title", "content", "questions", "date", "createdAt"]
+    },
+    "Response": {
+      "title": "Response",
+      "description": "A member's response to an activity.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "vibe": { "type": "string" },
+        "answers": { "type": "object", "description": "Record of answers." },
+        "submittedAt": { "type": "string" }
+      },
+      "required": ["userId", "vibe", "answers", "submittedAt"]
+    },
+    "Call": {
+      "title": "Call",
+      "description": "Information about a FAMI call.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "date": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "name", "date", "createdAt"]
+    }
+  },
+  "firestore": {
+    "users/{userId}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "User profiles. Required to define roles."
+    },
+    "famis/{famiId}": {
+      "schema": { "$ref": "#/entities/Fami" },
+      "description": "FAMI groups."
+    },
+    "famis/{famiId}/calls/{callId}": {
+      "schema": { "$ref": "#/entities/Call" },
+      "description": "Calls within a FAMI."
+    },
+    "famis/{famiId}/activities/{activityId}": {
+      "schema": { "$ref": "#/entities/Activity" },
+      "description": "Activities within a FAMI."
+    },
+    "famis/{famiId}/activities/{activityId}/responses/{responseId}": {
+      "schema": { "$ref": "#/entities/Response" },
+      "description": "Responses from members."
+    }
+  }
+}

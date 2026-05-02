@@ -1,0 +1,199 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 0. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // 1. Primitive Helpers
+    function isSignedIn() { 
+      return request.auth != null && request.auth.token.email_verified == true; 
+    }
+    
+    function isValidId(id) { 
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); 
+    }
+    
+    function incoming() { 
+      return request.resource.data; 
+    }
+    
+    function existing() { 
+      return resource.data; 
+    }
+
+    // Role lookups
+    function isLeader() {
+      // Must be signed in, and have role 'leader' in users doc
+      return isSignedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'leader';
+    }
+
+    function isMember() {
+      return isSignedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'member';
+    }
+
+    function isAdmin() {
+      return isSignedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    // Entity Validations
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'email', 'name', 'role', 'createdAt'])
+        && data.uid is string && data.uid.size() > 0 && data.uid.size() <= 128 && data.uid == request.auth.uid
+        && data.email is string && data.email.size() > 0 && data.email.size() <= 200
+        && data.name is string && data.name.size() > 0 && data.name.size() <= 100
+        && data.role in ['leader', 'member', 'admin']
+        && (data.famiId == null || (data.famiId is string && data.famiId.size() > 0 && data.famiId.size() <= 128))
+        && data.createdAt == request.time;
+    }
+
+    function isValidUserUpdate(data) {
+      return data.keys().hasAll(['uid', 'email', 'name', 'role', 'createdAt'])
+        && data.uid == existing().uid
+        && data.email == existing().email
+        && data.name is string && data.name.size() > 0 && data.name.size() <= 100
+        && data.role == existing().role
+        && (data.famiId == null || (data.famiId is string && data.famiId.size() > 0 && data.famiId.size() <= 128))
+        && data.createdAt == existing().createdAt;
+    }
+
+    function isValidFami(data) {
+      return data.keys().hasAll(['name', 'leaderId', 'createdAt']) 
+        && data.name is string && data.name.size() > 0 && data.name.size() <= 100
+        && data.leaderId is string && data.leaderId == request.auth.uid
+        && data.createdAt == request.time
+        && (!data.keys().hasAny(['activeCall']) || (data.activeCall is map && data.activeCall.keys().hasAll(['id', 'name', 'updatedAt'])));
+    }
+
+    function isValidFamiUpdate(data) {
+      return data.keys().hasAll(['name', 'leaderId', 'createdAt']) 
+        && data.name is string && data.name.size() > 0 && data.name.size() <= 100
+        && data.leaderId == existing().leaderId
+        && data.createdAt == existing().createdAt
+        && (!data.keys().hasAny(['activeCall']) || (data.activeCall is map && data.activeCall.keys().hasAll(['id', 'name', 'updatedAt'])));
+    }
+
+    function isValidCall(data) {
+      return data.keys().hasAll(['id', 'name', 'date', 'createdAt']) && data.keys().size() == 4
+        && data.id is string && data.id.size() > 0 && data.id.size() <= 200
+        && data.name is string && data.name.size() > 0 && data.name.size() <= 200
+        && data.date is string && data.date.size() > 0 && data.date.size() <= 60
+        && data.createdAt == request.time;
+    }
+
+    function isValidActivity(data) {
+      return data.keys().hasAll(['title', 'content', 'questions', 'date', 'createdAt']) && data.keys().size() == 5
+        && data.title is string && data.title.size() > 0 && data.title.size() <= 200
+        && data.content is string && data.content.size() <= 5000
+        && data.questions is list && data.questions.size() <= 20
+        && data.date is string && data.date.size() <= 60
+        && data.createdAt == request.time;
+    }
+
+    function isValidActivityUpdate(data) {
+      return data.keys().hasAll(['title', 'content', 'questions', 'date', 'createdAt']) && data.keys().size() == 5
+        && data.title is string && data.title.size() > 0 && data.title.size() <= 200
+        && data.content is string && data.content.size() <= 5000
+        && data.questions is list && data.questions.size() <= 20
+        && data.date is string && data.date.size() <= 60
+        && data.createdAt == existing().createdAt;
+    }
+
+    function isValidResponse(data) {
+      return data.keys().hasAll(['userId', 'userName', 'vibe', 'answers', 'submittedAt']) && data.keys().size() == 5
+        && data.userId is string && data.userId == request.auth.uid
+        && data.userName is string && data.userName.size() <= 100
+        && data.vibe is string && data.vibe.size() > 0 && data.vibe.size() <= 100
+        && data.answers is map
+        && data.submittedAt == request.time;
+    }
+
+    function isValidResponseUpdate(data) {
+      return data.keys().hasAll(['userId', 'userName', 'vibe', 'answers', 'submittedAt']) && data.keys().size() == 5
+        && data.userId == existing().userId
+        && data.userName is string && data.userName.size() <= 100
+        && data.vibe is string && data.vibe.size() > 0 && data.vibe.size() <= 100
+        && data.answers is map
+        && data.submittedAt == existing().submittedAt;
+    }
+
+    match /users/{userId} {
+      allow get: if isSignedIn();
+      allow list: if isSignedIn(); // Allow listing users to select leaders/members if needed, but safer
+      
+      allow create: if isSignedIn() && isValidId(userId) && userId == request.auth.uid && isValidUser(incoming());
+      allow update: if isSignedIn() && isValidId(userId) && (
+        (userId == request.auth.uid && isValidUserUpdate(incoming()) && incoming().diff(existing()).affectedKeys().hasOnly(['name', 'famiId'])) ||
+        (
+          isLeader() &&
+          isValidUserUpdate(incoming()) &&
+          existing().famiId != null &&
+          get(/databases/$(database)/documents/famis/$(existing().famiId)).data.leaderId == request.auth.uid &&
+          (incoming().famiId == null || incoming().famiId == '') &&
+          incoming().diff(existing()).affectedKeys().hasOnly(['famiId'])
+        ) ||
+        (
+          isAdmin() &&
+          incoming().keys().hasAll(['uid', 'email', 'name', 'role', 'createdAt']) &&
+          incoming().uid == existing().uid &&
+          incoming().email == existing().email &&
+          incoming().createdAt == existing().createdAt &&
+          incoming().name is string && incoming().name.size() > 0 && incoming().name.size() <= 100 &&
+          incoming().role in ['leader', 'member', 'admin'] &&
+          (incoming().famiId == null || (incoming().famiId is string && incoming().famiId.size() > 0 && incoming().famiId.size() <= 128)) &&
+          incoming().diff(existing()).affectedKeys().hasAny(['famiId', 'role']) && 
+          !incoming().diff(existing()).affectedKeys().hasAny(['uid', 'email', 'createdAt'])
+        )
+      );
+      allow delete: if isAdmin();
+    }
+
+    match /famis/{famiId} {
+      // Any signed in user can read famis (to pick one)
+      allow read: if isSignedIn() && isValidId(famiId);
+      allow list: if isSignedIn();
+
+      allow create: if isLeader() && isValidId(famiId) && isValidFami(incoming());
+      
+      allow update: if isLeader() && isValidId(famiId) && existing().leaderId == request.auth.uid && isValidFamiUpdate(incoming()) && incoming().diff(existing()).affectedKeys().hasAny(['name', 'activeCall']) && !incoming().diff(existing()).affectedKeys().hasAny(['leaderId', 'createdAt']);
+      
+      allow delete: if isLeader() && isValidId(famiId) && existing().leaderId == request.auth.uid;
+
+      match /calls/{callId} {
+        allow read: if isSignedIn() && isValidId(famiId) && isValidId(callId);
+        allow list: if isSignedIn() && isValidId(famiId);
+
+        allow create: if isLeader() && isValidId(famiId) && isValidId(callId) && get(/databases/$(database)/documents/famis/$(famiId)).data.leaderId == request.auth.uid && isValidCall(incoming());
+        allow delete: if isLeader() && isValidId(famiId) && isValidId(callId) && get(/databases/$(database)/documents/famis/$(famiId)).data.leaderId == request.auth.uid;
+      }
+
+      match /activities/{activityId} {
+        allow read: if isSignedIn() && isValidId(famiId) && isValidId(activityId);
+        allow list: if isSignedIn() && isValidId(famiId);
+
+        allow create: if isLeader() && isValidId(famiId) && isValidId(activityId) && get(/databases/$(database)/documents/famis/$(famiId)).data.leaderId == request.auth.uid && isValidActivity(incoming());
+        allow update: if isLeader() && isValidId(famiId) && isValidId(activityId) && get(/databases/$(database)/documents/famis/$(famiId)).data.leaderId == request.auth.uid && isValidActivityUpdate(incoming()) && incoming().diff(existing()).affectedKeys().hasOnly(['title', 'content', 'questions', 'date']);
+        allow delete: if isLeader() && isValidId(famiId) && isValidId(activityId) && get(/databases/$(database)/documents/famis/$(famiId)).data.leaderId == request.auth.uid;
+
+        match /responses/{responseId} {
+          // Leader of fami can read all responses, owner can read their own, admin can read all
+          allow get: if isSignedIn() && isValidId(famiId) && isValidId(activityId) && isValidId(responseId) && 
+            (get(/databases/$(database)/documents/famis/$(famiId)).data.leaderId == request.auth.uid || existing().userId == request.auth.uid || isAdmin());
+            
+          allow list: if isSignedIn() && isValidId(famiId) && isValidId(activityId) && 
+            (get(/databases/$(database)/documents/famis/$(famiId)).data.leaderId == request.auth.uid || isAdmin());
+
+          // Members can create a response
+          allow create: if isMember() && isValidId(famiId) && isValidId(activityId) && isValidId(responseId) && responseId == request.auth.uid && isValidResponse(incoming());
+          
+          allow update: if isMember() && isValidId(famiId) && isValidId(activityId) && isValidId(responseId) && responseId == request.auth.uid && isValidResponseUpdate(incoming()) && incoming().diff(existing()).affectedKeys().hasOnly(['userName', 'vibe', 'answers']);
+        }
+      }
+    }
+  }
+}
