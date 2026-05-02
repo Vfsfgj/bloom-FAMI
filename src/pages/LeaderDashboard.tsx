@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../lib/AuthContext';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
-import { collection, query, getDocs, addDoc, doc, getDoc, updateDoc, deleteDoc, serverTimestamp, orderBy, where } from 'firebase/firestore';
+import { collection, query, getDocs, addDoc, doc, getDoc, updateDoc, deleteDoc, serverTimestamp, orderBy, where, deleteField } from 'firebase/firestore';
 import { motion } from 'motion/react';
 import { Plus, Users, FileText, LogOut, Loader2, Trash2, Heart, AlertCircle, Calendar, Video, Link as LinkIcon, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -194,10 +194,8 @@ export function LeaderDashboard() {
     if (!window.confirm("Êtes-vous sûr de vouloir clôturer l'appel en cours ?")) return;
     
     try {
-      // Pour Firestore on doit enlever la clé activeCall, updateDoc avec la suppression dépend de field delete
-      const { deleteField } = await import('firebase/firestore');
       await updateDoc(doc(db, 'famis', profile.famiId), {
-        activeCall: deleteField()
+        activeCall: null
       });
       setActiveCallDetails(null);
       toast.success("Appel clôturé");

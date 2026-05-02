@@ -160,7 +160,7 @@ service cloud.firestore {
 
       allow create: if isLeader() && isValidId(famiId) && isValidFami(incoming());
       
-      allow update: if isLeader() && isValidId(famiId) && existing().leaderId == request.auth.uid && isValidFamiUpdate(incoming()) && incoming().diff(existing()).affectedKeys().hasAny(['name', 'activeCall']) && !incoming().diff(existing()).affectedKeys().hasAny(['leaderId', 'createdAt']);
+      allow update: if (isLeader() && isValidId(famiId) && existing().leaderId == request.auth.uid && incoming().diff(existing()).affectedKeys().hasOnly(['name', 'activeCall'])) || isAdmin();
       
       allow delete: if isLeader() && isValidId(famiId) && existing().leaderId == request.auth.uid;
 
