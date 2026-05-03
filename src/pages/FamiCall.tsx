@@ -22,10 +22,13 @@ export function FamiCall() {
 
   // Configuration ZegoCloud (à définir dans Settings > Environment Variables)
   // @ts-expect-error Vite env types
-  const appIDStr = import.meta.env.VITE_ZEGO_APP_ID;
+  const rawAppID = import.meta.env.VITE_ZEGO_APP_ID;
   // @ts-expect-error Vite env types
-  const serverSecret = import.meta.env.VITE_ZEGO_SERVER_SECRET;
-  const appID = parseInt(appIDStr || '0', 10);
+  const rawSecret = import.meta.env.VITE_ZEGO_SERVER_SECRET;
+  
+  const appIDStr = rawAppID?.toString().trim();
+  const serverSecret = rawSecret?.toString().trim();
+  const appID = appIDStr ? Number(appIDStr) : 0;
 
   const isConfigured = !!appID && !!serverSecret;
 
@@ -67,9 +70,11 @@ export function FamiCall() {
   useEffect(() => {
     if (!containerRef.current || !callDetails || !isConfigured || !user) return;
 
+    let zcInstance: any = null;
+
     const myMeeting = async (element: HTMLDivElement) => {
       // Générer le jeton (Token) de test
-      const kitToken =  ZegoUIKitPrebuilt.generateKitTokenForTest(
+      const kitToken = ZegoUIKitPrebuilt.generateKitTokenForTest(
         appID,
         serverSecret,
         callDetails.id, // Room ID
@@ -78,10 +83,10 @@ export function FamiCall() {
       );
 
       // Créer l'instance
-      const zc = ZegoUIKitPrebuilt.create(kitToken);
+      zcInstance = ZegoUIKitPrebuilt.create(kitToken);
       
       // Rejoindre la salle avec une configuration interne
-      zc.joinRoom({
+      zcInstance.joinRoom({
         container: element,
         sharedLinks: [
           {
@@ -107,7 +112,10 @@ export function FamiCall() {
     myMeeting(containerRef.current);
 
     return () => {
-      // Nettoyage éventuel
+      // Nettoyage éventuel : On détruit l'instance ZegoCloud si présente
+      if (zcInstance && typeof zcInstance.destroy === 'function') {
+        zcInstance.destroy();
+      }
       if (containerRef.current) {
         containerRef.current.innerHTML = '';
       }
