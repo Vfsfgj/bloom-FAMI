@@ -33,10 +33,9 @@ export function FamiCall() {
   const isConfigured = !!appID && !!serverSecret;
 
   useEffect(() => {
-    async function fetchCall() {
-      if (!profile?.famiId) return;
+    async function fetchCall(targetFamiId: string) {
       try {
-        const famiDoc = await getDoc(doc(db, 'famis', profile.famiId));
+        const famiDoc = await getDoc(doc(db, 'famis', targetFamiId));
         if (famiDoc.exists()) {
           const data = famiDoc.data();
           if (data.activeCall) {
@@ -59,13 +58,21 @@ export function FamiCall() {
     }
     
     if (!loading) {
-      if (!profile?.famiId) {
+      if (roomParam && nameParam) {
+        setCallDetails({ id: roomParam, name: nameParam });
+        setFetching(false);
+        return;
+      }
+
+      const targetFamiId = searchParams.get('famiId') || profile?.famiId;
+      
+      if (!targetFamiId) {
         navigate('/dashboard');
       } else {
-        fetchCall();
+        fetchCall(targetFamiId);
       }
     }
-  }, [loading, profile?.famiId, navigate]);
+  }, [loading, profile?.famiId, location.search, navigate]);
 
   useEffect(() => {
     if (!containerRef.current || !callDetails || !isConfigured || !user) return;

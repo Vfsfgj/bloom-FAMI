@@ -3,7 +3,7 @@ import { useAuth } from '../lib/AuthContext';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { collection, query, getDocs, updateDoc, doc, where, deleteDoc } from 'firebase/firestore';
 import { motion } from 'motion/react';
-import { Users, FileText, ArrowRightLeft, LogOut, Loader2, ShieldAlert, Trash2 } from 'lucide-react';
+import { Users, FileText, ArrowRightLeft, LogOut, Loader2, ShieldAlert, Trash2, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 
@@ -177,9 +177,72 @@ export function AdminDashboard() {
               className="max-w-4xl space-y-8"
             >
               <div className="bg-white p-6 md:p-8 rounded-[2rem] shadow-sm border border-gray-100">
-                <h1 className="text-2xl font-bold text-gray-900 mb-6">
-                  {famis.find(f => f.id === selectedFamiId)?.name}
-                </h1>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6 gap-4">
+                  <h1 className="text-2xl font-bold text-gray-900">
+                    {famis.find(f => f.id === selectedFamiId)?.name}
+                  </h1>
+                  
+                  <div className="flex items-center gap-2">
+                    {famis.find(f => f.id === selectedFamiId)?.activeCall && (
+                      <button
+                        onClick={async () => {
+                          if (!window.confirm("Êtes-vous sûr de vouloir clôturer l'appel pour cette FAMI ?")) return;
+                          try {
+                            await updateDoc(doc(db, 'famis', selectedFamiId), {
+                              activeCall: null
+                            });
+                            // Update local state to reflect the change immediately
+                            setFamis(famis.map(f => f.id === selectedFamiId ? { ...f, activeCall: null } : f));
+                            toast.success("L'appel a été clôturé.");
+                          } catch (error) {
+                            toast.error("Erreur lors de la clôture de l'appel");
+                            handleFirestoreError(error as any, OperationType.UPDATE, 'famis');
+                          }
+                        }}
+                        className="px-4 py-2 bg-red-100 text-red-600 rounded-xl font-bold hover:bg-red-200 transition-colors flex items-center justify-center gap-2"
+                        title="Clôturer l'appel"
+                      >
+                        <X className="w-4 h-4" />
+                        <span className="hidden sm:inline">Clôturer</span>
+                      </button>
+                    )}
+                    <button
+                      onClick={async () => {
+                        const fami = famis.find(f => f.id === selectedFamiId);
+                        if (!fami) return;
+                        try {
+                          if (fami.activeCall) {
+                            // Already an active call, just join it
+                            navigate(`/dashboard/call?famiId=${selectedFamiId}`);
+                          } else {
+                            // No active call, start one
+                            const callInfo = {
+                              id: `famicall_${selectedFamiId}_${Date.now()}`,
+                              name: `Appel - ${fami.name || 'FAMI'}`
+                            };
+                            
+                            // Set the call for the group so the leader sees it
+                            await updateDoc(doc(db, 'famis', selectedFamiId), {
+                              activeCall: callInfo
+                            });
+                            
+                            // Update local state as well just in case we navigate back
+                            setFamis(famis.map(f => f.id === selectedFamiId ? { ...f, activeCall: callInfo } : f));
+                            
+                            navigate(`/dashboard/call?famiId=${selectedFamiId}`);
+                          }
+                        } catch (error) {
+                          toast.error("Erreur lors de la création de l'appel");
+                          handleFirestoreError(error as any, OperationType.UPDATE, 'famis');
+                        }
+                      }}
+                      className={`px-4 py-2 ${famis.find(f => f.id === selectedFamiId)?.activeCall ? 'bg-bloom-secondary' : 'bg-bloom-primary'} text-white rounded-xl font-bold hover:opacity-90 transition-opacity flex items-center justify-center gap-2 ${famis.find(f => f.id === selectedFamiId)?.activeCall ? 'animate-pulse' : ''}`}
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+                      {famis.find(f => f.id === selectedFamiId)?.activeCall ? "Rejoindre l'appel" : "Appeler FAMI"}
+                    </button>
+                  </div>
+                </div>
                 
                 <section className="mb-8">
                   <div className="flex items-center gap-2 mb-4">
