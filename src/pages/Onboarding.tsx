@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../lib/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { db, handleFirestoreError, OperationType } from '../lib/firebase';
+import { db, handleFirestoreError, OperationType, auth } from '../lib/firebase';
 import { collection, addDoc, getDocs, doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { motion, AnimatePresence } from 'motion/react';
-import { User, Users, ArrowRight } from 'lucide-react';
+import { User, Users, ArrowRight, ArrowLeft } from 'lucide-react';
 import { WelcomeAnimation } from '../components/WelcomeAnimation';
 
 interface Fami {
@@ -119,11 +119,20 @@ export function Onboarding() {
         animate={{ opacity: 1, scale: 1 }}
         className="glass-panel rounded-3xl p-8 max-w-md w-full relative z-10"
       >
-        <h2 className="text-2xl font-bold mb-6 text-center">Bienvenue dans la FAMI ! 👋</h2>
-        
         {!role ? (
-          <div className="space-y-4">
-            <p className="text-gray-500 mb-4 text-center">Dis-nous qui tu es pour commencer :</p>
+          <>
+            <div className="flex items-center mb-6">
+               <button 
+                 onClick={() => auth.signOut()}
+                 className="mr-3 w-10 h-10 rounded-full border border-gray-200 flex items-center justify-center hover:bg-gray-50 transition-colors shrink-0"
+                 title="Se déconnecter"
+               >
+                 <ArrowLeft className="w-5 h-5 text-gray-500" />
+               </button>
+               <h2 className="text-2xl font-bold text-center flex-1 pr-13">Bienvenue ! 👋</h2>
+            </div>
+            <div className="space-y-4">
+              <p className="text-gray-500 mb-6 text-center">Dis-nous qui tu es pour commencer :</p>
             <button 
               onClick={() => setRole('leader')}
               className="w-full flex items-center p-4 rounded-xl border border-gray-200 hover:border-bloom-primary hover:bg-bloom-primary/5 transition-all text-left group"
@@ -162,6 +171,7 @@ export function Onboarding() {
               </div>
             </button>
           </div>
+          </>
         ) : role === 'admin' ? (
           <div className="space-y-6">
             <div>
