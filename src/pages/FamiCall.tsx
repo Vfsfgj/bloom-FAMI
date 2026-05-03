@@ -1,8 +1,8 @@
-import { JitsiMeeting } from '@jitsi/react-sdk';
+import { ZegoUIKitPrebuilt } from '@zegocloud/zego-uikit-prebuilt';
 import { useAuth } from '../lib/AuthContext';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Loader2, ArrowLeft, Link as LinkIcon } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { Loader2, ArrowLeft, Link as LinkIcon, Settings } from 'lucide-react';
+import { useEffect, useState, useRef } from 'react';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { toast } from 'sonner';
@@ -11,6 +11,7 @@ export function FamiCall() {
   const { user, profile, loading } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const containerRef = useRef<HTMLDivElement>(null);
   
   const searchParams = new URLSearchParams(location.search);
   const roomParam = searchParams.get('room');
@@ -18,6 +19,15 @@ export function FamiCall() {
 
   const [callDetails, setCallDetails] = useState<{ id: string, name: string } | null>(null);
   const [fetching, setFetching] = useState(true);
+
+  // Configuration ZegoCloud (à définir dans Settings > Environment Variables)
+  // @ts-expect-error Vite env types
+  const appIDStr = import.meta.env.VITE_ZEGO_APP_ID;
+  // @ts-expect-error Vite env types
+  const serverSecret = import.meta.env.VITE_ZEGO_SERVER_SECRET;
+  const appID = parseInt(appIDStr || '0', 10);
+
+  const isConfigured = !!appID && !!serverSecret;
 
   useEffect(() => {
     async function fetchCall() {
@@ -27,10 +37,6 @@ export function FamiCall() {
         if (famiDoc.exists()) {
           const data = famiDoc.data();
           if (data.activeCall) {
-            // Check if URL parameters match, or just use the active call
-            if (roomParam && data.activeCall.id !== roomParam) {
-               // The URL call is not active anymore, use the active one
-            }
             setCallDetails(data.activeCall);
             // Mettre à jour l'URL sans recharger la page pour que le lien copié soit correct
             window.history.replaceState(
@@ -58,10 +64,93 @@ export function FamiCall() {
     }
   }, [loading, profile?.famiId, navigate]);
 
+  useEffect(() => {
+    if (!containerRef.current || !callDetails || !isConfigured || !user) return;
+
+    const myMeeting = async (element: HTMLDivElement) => {
+      // Générer le jeton (Token) de test
+      const kitToken =  ZegoUIKitPrebuilt.generateKitTokenForTest(
+        appID,
+        serverSecret,
+        callDetails.id, // Room ID
+        user.uid,        // User ID
+        profile?.name || user.displayName || 'Participant' // User Name
+      );
+
+      // Créer l'instance
+      const zc = ZegoUIKitPrebuilt.create(kitToken);
+      
+      // Rejoindre la salle avec une configuration interne
+      zc.joinRoom({
+        container: element,
+        sharedLinks: [
+          {
+            name: 'Lien d\'invitation',
+            url: `${window.location.origin}/dashboard/call?room=${encodeURIComponent(callDetails.id)}&name=${encodeURIComponent(callDetails.name)}`
+          }
+        ],
+        scenario: {
+          mode: ZegoUIKitPrebuilt.GroupCall, // Pour les réunions d'équipe FAMI
+        },
+        showPreJoinView: false, // On désactive pour entrer directement vu que c'est géré côté app
+        showScreenSharingButton: true,
+        showRoomTimer: true,
+        branding: {
+          logoURL: 'https://i.imgur.com/gTqH06L.png', // Fake Logo
+        },
+        onLeaveRoom: () => {
+          navigate('/dashboard');
+        }
+      });
+    };
+
+    myMeeting(containerRef.current);
+
+    return () => {
+      // Nettoyage éventuel
+      if (containerRef.current) {
+        containerRef.current.innerHTML = '';
+      }
+    };
+  }, [callDetails, isConfigured, user, profile, appID, serverSecret, navigate]);
+
   if (loading || fetching) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#FAFAFA]">
         <Loader2 className="w-8 h-8 animate-spin text-bloom-primary" />
+      </div>
+    );
+  }
+
+  if (!isConfigured) {
+    return (
+      <div className="min-h-screen bg-[#FAFAFA] flex flex-col items-center justify-center p-4">
+        <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-100 max-w-xl w-full text-center">
+          <div className="w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-4">
+            <Settings className="w-8 h-8 text-blue-500" />
+          </div>
+          <h2 className="text-xl font-bold text-gray-900 mb-2">Configuration Requise</h2>
+          <p className="text-gray-500 mb-6 text-sm">
+            Pour utiliser l'interface vidéo 100% interne (ZegoCloud), vous devez configurer les clés de l'API dans le menu <strong>Secrets</strong> de l'environnement, sous le nom de :
+            <br/><br/>
+            <code className="bg-gray-100 px-2 py-1 rounded text-red-500">VITE_ZEGO_APP_ID</code><br/>
+            <code className="bg-gray-100 px-2 py-1 rounded text-red-500 mt-2 inline-block">VITE_ZEGO_SERVER_SECRET</code>
+          </p>
+          <a
+            href="https://console.zegocloud.com/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="w-full bg-blue-600 text-white font-bold py-3 rounded-xl hover:bg-blue-700 transition-colors inline-block mb-4"
+          >
+            Créer un compte ZegoCloud (Gratuit)
+          </a>
+          <button 
+            onClick={() => navigate('/dashboard')}
+            className="w-full bg-gray-100 text-gray-700 font-bold py-3 rounded-xl hover:bg-gray-200 transition-colors"
+          >
+            Retour au tableau de bord
+          </button>
+        </div>
       </div>
     );
   }
@@ -97,8 +186,8 @@ export function FamiCall() {
   };
 
   return (
-    <div className="min-h-screen bg-[#111] flex flex-col h-screen">
-      <header className="bg-black text-white p-4 flex items-center justify-between border-b border-white/10">
+    <div className="h-screen w-screen bg-[#111] flex flex-col overflow-hidden">
+      <header className="bg-black/90 backdrop-blur-md text-white p-4 flex items-center justify-between border-b border-white/10 z-10 shrink-0">
         <div className="flex items-center gap-4">
           <button 
             onClick={() => navigate('/dashboard')}
@@ -123,38 +212,11 @@ export function FamiCall() {
         </button>
       </header>
 
-      <div className="flex-1 w-full bg-[#111]">
-        <JitsiMeeting
-          domain="meet.jit.si"
-          roomName={callDetails.id}
-          configOverwrite={{
-            startWithAudioMuted: false,
-            startWithVideoMuted: false,
-            disableModeratorIndicator: true,
-            enableEmailInStats: false,
-            prejoinPageEnabled: false
-          }}
-          interfaceConfigOverwrite={{
-            DISABLE_JOIN_LEAVE_NOTIFICATIONS: true,
-          }}
-          userInfo={{
-            displayName: profile?.name || user?.displayName || 'Membre Bloom',
-            email: user?.email || undefined
-          }}
-          onApiReady={(externalApi) => {
-            externalApi.executeCommand('subject', callDetails.name);
-          }}
-          getIFrameRef={(iframeRef) => {
-            iframeRef.style.height = '100%';
-            iframeRef.style.width = '100%';
-          }}
-          spinner={() => (
-            <div className="flex items-center justify-center h-full w-full">
-               <Loader2 className="w-10 h-10 animate-spin text-bloom-primary" />
-            </div>
-          )}
-        />
-      </div>
+      {/* Le conteneur ZegoCloud qui remplace le composant iframé de Jitsi */}
+      <div 
+        ref={containerRef} 
+        className="flex-1 w-full bg-[#111]"
+      />
     </div>
   );
 }
