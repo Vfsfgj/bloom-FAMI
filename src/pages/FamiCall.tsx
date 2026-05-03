@@ -128,10 +128,11 @@ export function FamiCall() {
           domain="meet.jit.si"
           roomName={callDetails.id}
           configOverwrite={{
-            startWithAudioMuted: true,
+            startWithAudioMuted: false,
+            startWithVideoMuted: false,
             disableModeratorIndicator: true,
-            startScreenSharing: true,
             enableEmailInStats: false,
+            prejoinPageEnabled: false
           }}
           interfaceConfigOverwrite={{
             DISABLE_JOIN_LEAVE_NOTIFICATIONS: true,
