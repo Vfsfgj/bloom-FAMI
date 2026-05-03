@@ -148,8 +148,8 @@ export function FamiCall() {
           <p className="text-gray-500 mb-6 text-sm">
             Pour utiliser l'interface vidéo 100% interne (ZegoCloud), vous devez configurer les clés de l'API dans le menu <strong>Secrets</strong> de l'environnement, sous le nom de :
             <br/><br/>
-            <code className="bg-gray-100 px-2 py-1 rounded text-red-500">VITE_ZEGO_APP_ID</code><br/>
-            <code className="bg-gray-100 px-2 py-1 rounded text-red-500 mt-2 inline-block">VITE_ZEGO_SERVER_SECRET</code>
+            <code className="bg-gray-100 px-2 py-1 rounded text-red-500">VITE_ZEGO_APP_ID</code> (Actuellement: {rawAppID ? 'Défini' : 'Introuvable'})<br/>
+            <code className="bg-gray-100 px-2 py-1 rounded text-red-500 mt-2 inline-block">VITE_ZEGO_SERVER_SECRET</code> (Actuellement: {rawSecret ? 'Défini' : 'Introuvable'})
           </p>
           <a
             href="https://console.zegocloud.com/"
