@@ -30,10 +30,12 @@ export function FamiCall() {
   const localStreamRef = useRef<MediaStream | null>(null);
   const peersRef = useRef<{ [uid: string]: RTCPeerConnection }>({});
   const audioElementsRef = useRef<{ [uid: string]: HTMLAudioElement }>({});
+  const pendingCandidatesRef = useRef<{ [uid: string]: RTCIceCandidateInit[] }>({});
 
   const [joined, setJoined] = useState(false);
 
   // 1. Fetch Call Details
+
   useEffect(() => {
     async function fetchCall() {
       if (!targetFamiId) {
@@ -103,6 +105,7 @@ export function FamiCall() {
         const createPeer = (targetUid: string, isInitiator: boolean) => {
           const pc = new RTCPeerConnection(iceServers);
           peersRef.current[targetUid] = pc;
+          pendingCandidatesRef.current[targetUid] = [];
 
           // Add local tracks
           stream.getTracks().forEach((track) => {
@@ -189,33 +192,55 @@ export function FamiCall() {
               const data = change.doc.data();
               const sender = data.sender;
               let pc = peersRef.current[sender];
+              const signalId = change.doc.id;
 
-              if (data.type === 'offer') {
-                if (!pc) pc = createPeer(sender, false);
-                const offer = JSON.parse(data.data);
-                await pc.setRemoteDescription(new RTCSessionDescription(offer));
-                const answer = await pc.createAnswer();
-                await pc.setLocalDescription(answer);
+              try {
+                if (data.type === 'offer') {
+                  if (!pc) pc = createPeer(sender, false);
+                  const offer = JSON.parse(data.data);
+                  await pc.setRemoteDescription(new RTCSessionDescription(offer));
+                  
+                  // add queued candidates
+                  pendingCandidatesRef.current[sender]?.forEach(c => pc.addIceCandidate(new RTCIceCandidate(c)));
+                  pendingCandidatesRef.current[sender] = [];
 
-                // Send Answer
-                await addDoc(signalsRef, {
-                  sender: myUid,
-                  receiver: sender,
-                  type: 'answer',
-                  data: JSON.stringify(answer),
-                  timestamp: Date.now(),
-                });
-              } else if (data.type === 'answer') {
-                if (pc) {
-                  const answer = JSON.parse(data.data);
-                  await pc.setRemoteDescription(new RTCSessionDescription(answer));
+                  const answer = await pc.createAnswer();
+                  await pc.setLocalDescription(answer);
+
+                  // Send Answer
+                  await addDoc(signalsRef, {
+                    sender: myUid,
+                    receiver: sender,
+                    type: 'answer',
+                    data: JSON.stringify(answer),
+                    timestamp: Date.now(),
+                  });
+                } else if (data.type === 'answer') {
+                  if (pc) {
+                    const answer = JSON.parse(data.data);
+                    await pc.setRemoteDescription(new RTCSessionDescription(answer));
+
+                    // add queued candidates
+                    pendingCandidatesRef.current[sender]?.forEach(c => pc.addIceCandidate(new RTCIceCandidate(c)));
+                    pendingCandidatesRef.current[sender] = [];
+                  }
+                } else if (data.type === 'candidate') {
+                  if (pc) {
+                    const candidate = JSON.parse(data.data);
+                    if (pc.remoteDescription) {
+                      await pc.addIceCandidate(new RTCIceCandidate(candidate));
+                    } else {
+                      if (!pendingCandidatesRef.current[sender]) pendingCandidatesRef.current[sender] = [];
+                      pendingCandidatesRef.current[sender].push(candidate);
+                    }
+                  }
                 }
-              } else if (data.type === 'candidate') {
-                if (pc) {
-                  const candidate = JSON.parse(data.data);
-                  await pc.addIceCandidate(new RTCIceCandidate(candidate));
-                }
+              } catch (e) {
+                console.error("WebRTC Signal error", e);
               }
+
+              // Cleanup signal
+              deleteDoc(doc(signalsRef, signalId)).catch(e => console.error("Error deleting handled signal", e));
             }
           });
         });
