@@ -244,9 +244,17 @@ export function FamiCall() {
             }
           });
         });
-      } catch (error) {
-        console.error("Error accessing media devices.", error);
-        toast.error("Impossible d'accéder au microphone.");
+      } catch (error: any) {
+        console.error("Error accessing media devices:", error.name, error.message, error);
+        if (error.name === 'NotAllowedError') {
+          toast.error("Veuillez autoriser l'accès au microphone dans votre navigateur.");
+        } else if (error.name === 'NotFoundError') {
+          toast.error("Aucun microphone n'a été détecté.");
+        } else if (!navigator.mediaDevices) {
+          toast.error("L'accès aux périphériques multimédias n'est pas supporté (vérifiez le contexte sécurisé).");
+        } else {
+          toast.error(`Impossible d'accéder au microphone: ${error.message || error}`);
+        }
       }
     };
 
