@@ -31,6 +31,8 @@ export function FamiCall() {
   const peersRef = useRef<{ [uid: string]: RTCPeerConnection }>({});
   const audioElementsRef = useRef<{ [uid: string]: HTMLAudioElement }>({});
 
+  const [joined, setJoined] = useState(false);
+
   // 1. Fetch Call Details
   useEffect(() => {
     async function fetchCall() {
@@ -71,12 +73,14 @@ export function FamiCall() {
 
   // 2. WebRTC Mesh Logic
   useEffect(() => {
-    if (!callDetails || !user || !targetFamiId) return;
+    if (!joined || !callDetails || !user || !targetFamiId) return;
 
     const myUid = user.uid;
     const callId = callDetails.id;
     const participantsRef = collection(db, 'famis', targetFamiId, 'activeCallInfo', callId, 'participants');
     const signalsRef = collection(db, 'famis', targetFamiId, 'activeCallInfo', callId, 'signals');
+
+
 
     let unsubParticipants: () => void;
     let unsubSignals: () => void;
@@ -244,7 +248,7 @@ export function FamiCall() {
       // Remove self from participants
       deleteDoc(doc(participantsRef, myUid)).catch(e => console.error(e));
     };
-  }, [callDetails, user, targetFamiId, profile]);
+  }, [joined, callDetails, user, targetFamiId, profile]);
 
   const toggleMute = () => {
     if (localStreamRef.current) {
@@ -288,6 +292,35 @@ export function FamiCall() {
             className="w-full bg-gray-900 text-white font-bold py-3 rounded-xl hover:bg-gray-800 transition-colors"
           >
             Retour au tableau de bord
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (!joined) {
+    return (
+      <div className="min-h-screen bg-[#111] flex flex-col items-center justify-center p-4">
+        <div className="bg-[#222] p-8 rounded-3xl shadow-sm border border-white/10 max-w-md w-full text-center">
+          <div className="w-20 h-20 bg-bloom-primary/20 rounded-full flex items-center justify-center mx-auto mb-6">
+            <Mic className="w-10 h-10 text-bloom-primary" />
+          </div>
+          <h2 className="text-2xl font-bold text-white mb-2">{callDetails.name}</h2>
+          <p className="text-gray-400 mb-8">
+            Rejoignez l'appel audio avec votre FAMI. Assurez-vous d'autoriser l'accès au microphone lors de la connexion.
+          </p>
+          <button
+            onClick={() => setJoined(true)}
+            className="w-full bg-bloom-primary text-white font-bold py-4 rounded-xl hover:bg-bloom-primary/90 transition-colors flex items-center justify-center gap-2 text-lg"
+          >
+            <Volume2 className="w-6 h-6" />
+            Rejoindre l'appel
+          </button>
+          <button
+            onClick={() => navigate('/dashboard')}
+            className="w-full mt-4 bg-transparent text-gray-400 font-bold py-3 rounded-xl hover:bg-white/5 transition-colors"
+          >
+            Annuler
           </button>
         </div>
       </div>
