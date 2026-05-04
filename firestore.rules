@@ -164,6 +164,11 @@ service cloud.firestore {
       
       allow delete: if isLeader() && isValidId(famiId) && existing().leaderId == request.auth.uid;
 
+      // WebRTC Signaling
+      match /activeCallInfo/{document=**} {
+        allow read, write: if isSignedIn() && isValidId(famiId);
+      }
+
       match /calls/{callId} {
         allow read: if isSignedIn() && isValidId(famiId) && isValidId(callId);
         allow list: if isSignedIn() && isValidId(famiId);
